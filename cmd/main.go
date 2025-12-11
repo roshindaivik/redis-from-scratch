@@ -5,7 +5,7 @@ import (
 	"net"
 	"os"
 
-	"github.com/roshindaivik/redis-from-scratch/internal"
+	internal "github.com/roshindaivik/redis-from-scratch/handler"
 )
 
 

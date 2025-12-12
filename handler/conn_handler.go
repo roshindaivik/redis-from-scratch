@@ -4,13 +4,28 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
+
+type ValueType int
+
+const (
+	STRING ValueType = iota
+	LIST 
+)
+
+type Value struct{
+	Data interface{}
+	Expiry *time.Time 
+	Type ValueType	
+}
 
 type DB struct {
 	mu sync.Mutex
-	kv map[string]string
+	kv map[string]Value
 }
 
 type Command struct {
@@ -19,8 +34,9 @@ type Command struct {
 }
 
 var db = DB{
-	kv: make(map[string]string),
+	kv: make(map[string]Value),
 }
+
 
 func RedisConnHandler(conn net.Conn) {
 	defer conn.Close()
@@ -76,7 +92,11 @@ func (db *DB) GetKey(args []string) (string, bool) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	val, ok := db.kv[args[0]]
-	return val, ok
+	if val.Expiry != nil && time.Now().After(*val.Expiry){
+		delete(db.kv,args[0])
+		return "",false
+	}
+	return val.Data.(string), ok
 }
 
 func (db *DB) SetKey(args []string) error {
@@ -86,9 +106,28 @@ func (db *DB) SetKey(args []string) error {
 	key := args[0]
 	value := args[1]
 
+	var expiry *time.Time;
+
+	if len(args) > 2 && args[2] == "PX"{
+		if len(args) < 4{
+			return fmt.Errorf("syntax error")
+		}
+		// Somehow set a timer for it to expire 
+		ms, err := strconv.ParseInt(args[3], 10, 64)
+		if err != nil{
+			return fmt.Errorf("invalid expire time in 'SET'")
+		}
+		expiryTime := time.Now().Add(time.Duration(ms) * time.Second)
+		expiry = &expiryTime	
+	}
 	db.mu.Lock()
 	defer db.mu.Unlock()
-	db.kv[key] = value
+	db.kv[key] = Value{
+		Data: value,
+		Expiry: expiry,	
+		Type: STRING,
+	}
+	fmt.Println(db)
 	return nil
 }
 
